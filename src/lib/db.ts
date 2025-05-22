@@ -1,9 +1,8 @@
-// lib/db.ts
 import mysql from "mysql2/promise";
 
 export const db = mysql.createPool({
   host: "localhost",
-  user: "your_username",
-  password: "your_password",
-  database: "your_db_name",
+  user: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  database: "game_db",
 });

@@ -1,31 +1,48 @@
-// pages/api/join-room.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { db } from "@/lib/db";
 import bcrypt from "bcrypt";
+import { db } from "@/lib/db";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "POST") {
+    return res.status(405).end();
+  }
 
-  const { roomId, password, playerName } = req.body;
+  const { roomId, playerName, password } = req.body;
+  if (!roomId || !playerName || !password) {
+    return res.status(400).json({ error: "全ての値を入力してください" });
+  }
 
-  const [rows]: any = await db.query("SELECT * FROM rooms WHERE id = ?", [
-    roomId,
-  ]);
-  if (rows.length === 0)
-    return res.status(404).json({ error: "ルームが見つかりません" });
+  const conn = await db.getConnection();
 
-  const room = rows[0];
-  const isMatch = await bcrypt.compare(password, room.password_hash);
+  try {
+    await conn.beginTransaction();
 
-  if (!isMatch) return res.status(401).json({ error: "パスワードが違います" });
+    const [rows]: any = await conn.query("SELECT * FROM rooms WHERE id = ?", [
+      roomId,
+    ]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "ルームが見つかりませんでした" });
+    }
 
-  await db.query("INSERT INTO players (name, room_id) VALUES (?, ?)", [
-    playerName,
-    roomId,
-  ]);
+    const compared = await bcrypt.compare(password, rows[0].password_hash);
+    if (!compared) {
+      return res.status(401).json({ error: "パスワードが違います" });
+    }
 
-  res.status(200).json({ success: true });
+    await conn.query("INSERT INTO players (name, room_id) VALUES(?,?)", [
+      playerName,
+      roomId,
+    ]);
+
+    await conn.commit();
+    res.status(200).json({ success: true });
+  } catch (error) {
+    await conn.rollback();
+    res.status(500).json({ error: "エラーが発生しました" });
+  } finally {
+    conn.release();
+  }
 }
